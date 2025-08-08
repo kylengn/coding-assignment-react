@@ -1,9 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { Ticket, User } from '@acme/shared-models';
-import Tickets from './tickets';
+import TicketDetails from './ticket-details';
 
-const mockOnAddTicket = jest.fn();
 const mockOnAssignTicket = jest.fn();
 const mockOnUnassignTicket = jest.fn();
 const mockOnCompleteTicket = jest.fn();
@@ -37,17 +36,28 @@ const renderWithRouter = (component: React.ReactElement) => {
   );
 };
 
-describe('Tickets', () => {
+// Mock useParams and useNavigate
+const mockUseParams = jest.fn();
+const mockUseNavigate = jest.fn();
+
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useParams: () => mockUseParams(),
+  useNavigate: () => mockUseNavigate()
+}));
+
+describe('TicketDetails', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseParams.mockReturnValue({ id: '1' });
+    mockUseNavigate.mockReturnValue(jest.fn());
   });
 
-  it('should render successfully with tickets', () => {
+  it('should render ticket details successfully', () => {
     renderWithRouter(
-      <Tickets
+      <TicketDetails
         tickets={mockTickets}
         users={mockUsers}
-        onAddTicket={mockOnAddTicket}
         onAssignTicket={mockOnAssignTicket}
         onUnassignTicket={mockOnUnassignTicket}
         onCompleteTicket={mockOnCompleteTicket}
@@ -55,84 +65,19 @@ describe('Tickets', () => {
       />
     );
 
-    expect(screen.getByText('Tickets (2)')).toBeInTheDocument();
+    expect(screen.getByText('Ticket #1')).toBeInTheDocument();
     expect(screen.getByText(/Install a monitor arm/)).toBeInTheDocument();
-    expect(screen.getByText(/Move the desk to the new location/)).toBeInTheDocument();
-  });
-
-  it('should render empty state when no tickets', () => {
-    renderWithRouter(
-      <Tickets
-        tickets={[]}
-        users={mockUsers}
-        onAddTicket={mockOnAddTicket}
-        onAssignTicket={mockOnAssignTicket}
-        onUnassignTicket={mockOnUnassignTicket}
-        onCompleteTicket={mockOnCompleteTicket}
-        onIncompleteTicket={mockOnIncompleteTicket}
-      />
-    );
-
-    expect(screen.getByText('Tickets (0)')).toBeInTheDocument();
-    expect(screen.getByText('No tickets found.')).toBeInTheDocument();
-  });
-
-  it('should filter tickets correctly', () => {
-    renderWithRouter(
-      <Tickets
-        tickets={mockTickets}
-        users={mockUsers}
-        onAddTicket={mockOnAddTicket}
-        onAssignTicket={mockOnAssignTicket}
-        onUnassignTicket={mockOnUnassignTicket}
-        onCompleteTicket={mockOnCompleteTicket}
-        onIncompleteTicket={mockOnIncompleteTicket}
-      />
-    );
-
-    // Click on "Completed" filter
-    fireEvent.click(screen.getByText('Completed'));
-    expect(screen.getByText('Tickets (1)')).toBeInTheDocument();
-    expect(screen.getByText(/Move the desk to the new location/)).toBeInTheDocument();
-    expect(screen.queryByText(/Install a monitor arm/)).not.toBeInTheDocument();
-
-    // Click on "Incomplete" filter
-    fireEvent.click(screen.getByText('Incomplete'));
-    expect(screen.getByText('Tickets (1)')).toBeInTheDocument();
-    expect(screen.getByText(/Install a monitor arm/)).toBeInTheDocument();
-    expect(screen.queryByText(/Move the desk to the new location/)).not.toBeInTheDocument();
-  });
-
-  it('should add a new ticket', async () => {
-    renderWithRouter(
-      <Tickets
-        tickets={mockTickets}
-        users={mockUsers}
-        onAddTicket={mockOnAddTicket}
-        onAssignTicket={mockOnAssignTicket}
-        onUnassignTicket={mockOnUnassignTicket}
-        onCompleteTicket={mockOnCompleteTicket}
-        onIncompleteTicket={mockOnIncompleteTicket}
-      />
-    );
-
-    const input = screen.getByPlaceholderText('Enter ticket description...');
-    const addButton = screen.getByText('Add Ticket');
-
-    fireEvent.change(input, { target: { value: 'New test ticket' } });
-    fireEvent.click(addButton);
-
-    await waitFor(() => {
-      expect(mockOnAddTicket).toHaveBeenCalledWith('New test ticket');
-    });
+    expect(screen.getByText('Incomplete')).toBeInTheDocument();
+    expect(screen.getByText('Assignee')).toBeInTheDocument();
+    const assigneeSection = screen.getByText('Assignee').closest('div');
+    expect(assigneeSection).toHaveTextContent('Alice');
   });
 
   it('should assign a user to a ticket', async () => {
     renderWithRouter(
-      <Tickets
+      <TicketDetails
         tickets={mockTickets}
         users={mockUsers}
-        onAddTicket={mockOnAddTicket}
         onAssignTicket={mockOnAssignTicket}
         onUnassignTicket={mockOnUnassignTicket}
         onCompleteTicket={mockOnCompleteTicket}
@@ -140,13 +85,69 @@ describe('Tickets', () => {
       />
     );
 
-    const assignSelects = screen.getAllByRole('combobox');
-    const firstSelect = assignSelects[0];
-
-    fireEvent.change(firstSelect, { target: { value: '2' } });
+    const assignSelect = screen.getByRole('combobox');
+    fireEvent.change(assignSelect, { target: { value: '2' } });
 
     await waitFor(() => {
       expect(mockOnAssignTicket).toHaveBeenCalledWith(1, 2);
     });
+  });
+
+  it('should unassign a user from a ticket', async () => {
+    renderWithRouter(
+      <TicketDetails
+        tickets={mockTickets}
+        users={mockUsers}
+        onAssignTicket={mockOnAssignTicket}
+        onUnassignTicket={mockOnUnassignTicket}
+        onCompleteTicket={mockOnCompleteTicket}
+        onIncompleteTicket={mockOnIncompleteTicket}
+      />
+    );
+
+    const assignSelect = screen.getByRole('combobox');
+    fireEvent.change(assignSelect, { target: { value: '' } });
+
+    await waitFor(() => {
+      expect(mockOnUnassignTicket).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('should toggle ticket completion', async () => {
+    renderWithRouter(
+      <TicketDetails
+        tickets={mockTickets}
+        users={mockUsers}
+        onAssignTicket={mockOnAssignTicket}
+        onUnassignTicket={mockOnUnassignTicket}
+        onCompleteTicket={mockOnCompleteTicket}
+        onIncompleteTicket={mockOnIncompleteTicket}
+      />
+    );
+
+    const completeButton = screen.getByText('Mark as Complete');
+    fireEvent.click(completeButton);
+
+    await waitFor(() => {
+      expect(mockOnCompleteTicket).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('should show error for non-existent ticket', () => {
+    mockUseParams.mockReturnValue({ id: '999' });
+
+    renderWithRouter(
+      <TicketDetails
+        tickets={mockTickets}
+        users={mockUsers}
+        onAssignTicket={mockOnAssignTicket}
+        onUnassignTicket={mockOnUnassignTicket}
+        onCompleteTicket={mockOnCompleteTicket}
+        onIncompleteTicket={mockOnIncompleteTicket}
+      />
+    );
+
+    expect(screen.getByText('Error')).toBeInTheDocument();
+    expect(screen.getByText('Ticket not found')).toBeInTheDocument();
   });
 });
